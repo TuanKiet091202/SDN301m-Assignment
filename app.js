@@ -3,20 +3,17 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 
-var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
+var bookRouter = require('./routes/bookRouter');
 
-const bodyParser = require('body-parser');
-
+const passport = require('passport');
 
 var app = express();
-var bookRouter = require('./routes/bookRouter');
-var genreRouter = require('./routes/genreRouter');
 
 
-
-// view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 
@@ -26,12 +23,24 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
+// Configure session middleware
+app.use(
+  session({
+    name: 'session-id',
+    secret: '12345-67890-09876-54321',
+    saveUninitialized: false,
+    resave: false,
+    store: new FileStore(),
+  })
+);
+
+// Initialize passport middleware
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Include route handlers
 app.use('/users', usersRouter);
-
 app.use('/books', bookRouter);
-app.use('/genres', genreRouter);
-
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -51,16 +60,20 @@ app.use(function (err, req, res, next) {
 
 const mongoose = require('mongoose');
 
-const Books = require('./models/books');
-const Genres = require('./models/genres');
+// Connect to MongoDB
+const url = 'mongodb://localhost:27017/BookMng';
+const connect = mongoose.connect(url, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
-const url = 'mongodb://localhost:27017/bookstore';
-const connect = mongoose.connect(url);
-
-connect.then((db) => {
-  console.log("Connected correctly to server");
-
-}, (err) => { console.log(err); });
-
+connect.then(
+  (db) => {
+    console.log('Connected correctly to server');
+  },
+  (err) => {
+    console.log(err);
+  }
+);
 
 module.exports = app;

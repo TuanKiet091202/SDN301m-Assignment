@@ -1,28 +1,15 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-const Books = require('../models/books');
+const Book = require('../models/books');
+const authenticate = require("../authenticate");
 
 const bookRouter = express.Router();
 bookRouter.use(bodyParser.json());
 
 bookRouter.route('/')
     .get((req, res, next) => {
-        let filter = {};
-
-        if (req.query.price) {
-            const maxPrice = parseFloat(req.query.price);
-            if (!isNaN(maxPrice)) {
-                filter.price = { $lte: maxPrice };
-                console.log(`Filter applied: ${JSON.stringify(filter)}`);
-            } else {
-                const err = new Error('Invalid price value');
-                err.status = 400;
-                return next(err);
-            }
-        }
-
-        Books.find(filter)
+        Book.find({})
             .then((books) => {
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
@@ -30,8 +17,8 @@ bookRouter.route('/')
             })
             .catch((err) => next(err));
     })
-    .post((req, res, next) => {
-        Books.create(req.body)
+    .post(authenticate.verifyUser, authenticate.verifyfAdmin, (req, res, next) => {
+        Book.create(req.body)
             .then((book) => {
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
@@ -39,12 +26,8 @@ bookRouter.route('/')
             })
             .catch((err) => next(err));
     })
-    .put((req, res, next) => {
-        res.statusCode = 403;
-        res.end('PUT operation not supported on /books');
-    })
-    .delete((req, res, next) => {
-        Books.deleteMany({})
+    .delete(authenticate.verifyUser, authenticate.verifyfAdmin, (req, res, next) => {
+        Book.deleteMany({})
             .then((resp) => {
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
@@ -55,7 +38,7 @@ bookRouter.route('/')
 
 bookRouter.route('/:bookId')
     .get((req, res, next) => {
-        Books.findById(req.params.bookId)
+        Book.findById(req.params.bookId)
             .then((book) => {
                 if (book) {
                     res.statusCode = 200;
@@ -69,12 +52,8 @@ bookRouter.route('/:bookId')
             })
             .catch((err) => next(err));
     })
-    .post((req, res, next) => {
-        res.statusCode = 403;
-        res.end('POST operation not supported on /books/' + req.params.bookId);
-    })
-    .put((req, res, next) => {
-        Books.findByIdAndUpdate(req.params.bookId, {
+    .put(authenticate.verifyUser, authenticate.verifyfAdmin, (req, res, next) => {
+        Book.findByIdAndUpdate(req.params.bookId, {
             $set: req.body
         }, { new: true })
             .then((book) => {
@@ -90,8 +69,8 @@ bookRouter.route('/:bookId')
             })
             .catch((err) => next(err));
     })
-    .delete((req, res, next) => {
-        Books.findByIdAndRemove(req.params.bookId)
+    .delete(authenticate.verifyUser, authenticate.verifyfAdmin, (req, res, next) => {
+        Book.findByIdAndRemove(req.params.bookId)
             .then((resp) => {
                 if (resp) {
                     res.statusCode = 200;
@@ -108,7 +87,7 @@ bookRouter.route('/:bookId')
 
 bookRouter.route('/:bookId/comments')
     .get((req, res, next) => {
-        Books.findById(req.params.bookId)
+        Book.findById(req.params.bookId)
             .then((book) => {
                 if (book) {
                     res.statusCode = 200;
@@ -122,8 +101,8 @@ bookRouter.route('/:bookId/comments')
             })
             .catch((err) => next(err));
     })
-    .post((req, res, next) => {
-        Books.findById(req.params.bookId)
+    .post(authenticate.verifyUser, (req, res, next) => {
+        Book.findById(req.params.bookId)
             .then((book) => {
                 if (book) {
                     book.comments.push(req.body);
@@ -141,110 +120,147 @@ bookRouter.route('/:bookId/comments')
                 }
             })
             .catch((err) => next(err));
-    })
-    .put((req, res, next) => {
-        res.statusCode = 403;
-        res.end('PUT operation not supported on /books/' + req.params.bookId + '/comments');
-    })
-    .delete((req, res, next) => {
-        Books.findById(req.params.bookId)
-            .then((book) => {
-                if (book) {
-                    for (let i = (book.comments.length - 1); i >= 0; i--) {
-                        book.comments.id(book.comments[i]._id).remove();
-                    }
-                    book.save()
-                        .then((book) => {
-                            res.statusCode = 200;
-                            res.setHeader('Content-Type', 'application/json');
-                            res.json(book);
-                        })
-                        .catch((err) => next(err));
-                } else {
-                    const err = new Error('Book ' + req.params.bookId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                }
-            })
-            .catch((err) => next(err));
     });
 
-bookRouter.route('/:bookId/comments/:commentId')
-    .get((req, res, next) => {
-        Books.findById(req.params.bookId)
-            .then((book) => {
-                if (book && book.comments.id(req.params.commentId)) {
-                    res.statusCode = 200;
-                    res.setHeader('Content-Type', 'application/json');
-                    res.json(book.comments.id(req.params.commentId));
-                } else if (!book) {
-                    const err = new Error('Book ' + req.params.bookId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                } else {
-                    const err = new Error('Comment ' + req.params.commentId + ' not found');
-                    err.status = 404;
-                    return next(err);
+bookRouter.get('/:bookId/comments', (req, res, next) => {
+    Book.findById(req.params.bookId)
+        .populate('comments.user') // Populate thông tin user trong comments
+        .then((book) => {
+            if (book) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.json(book.comments);
+            } else {
+                const err = new Error('Book ' + req.params.bookId + ' not found');
+                err.status = 404;
+                return next(err);
+            }
+        })
+        .catch((err) => next(err));
+});
+
+// Endpoint POST /books/:bookId/comments - Tạo mới comment cho một cuốn sách
+bookRouter.post('/:bookId/comments', authenticate.verifyUser, (req, res, next) => {
+    Book.findById(req.params.bookId)
+        .then((book) => {
+            if (book) {
+                req.body.user = req.user._id; // Lấy user ID từ JWT
+                book.comments.push(req.body);
+                return book.save();
+            } else {
+                const err = new Error('Book ' + req.params.bookId + ' not found');
+                err.status = 404;
+                throw err;
+            }
+        })
+        .then((book) => {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(book);
+        })
+        .catch((err) => next(err));
+});
+
+// Endpoint GET /books/:bookId/comments/:commentId - Lấy thông tin một comment cụ thể của một cuốn sách
+bookRouter.get('/:bookId/comments/:commentId', (req, res, next) => {
+    Book.findById(req.params.bookId)
+        .populate('comments.user') // Populate thông tin user trong comments
+        .then((book) => {
+            if (book && book.comments.id(req.params.commentId)) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.json(book.comments.id(req.params.commentId));
+            } else if (!book) {
+                const err = new Error('Book ' + req.params.bookId + ' not found');
+                err.status = 404;
+                return next(err);
+            } else {
+                const err = new Error('Comment ' + req.params.commentId + ' not found');
+                err.status = 404;
+                return next(err);
+            }
+        })
+        .catch((err) => next(err));
+});
+
+// Endpoint PUT /books/:bookId/comments/:commentId - Cập nhật thông tin một comment cụ thể của một cuốn sách
+bookRouter.put('/:bookId/comments/:commentId', authenticate.verifyUser, (req, res, next) => {
+    Book.findById(req.params.bookId)
+        .then((book) => {
+            if (book && book.comments.id(req.params.commentId)) {
+                if (req.body.text) {
+                    book.comments.id(req.params.commentId).text = req.body.text;
                 }
-            })
-            .catch((err) => next(err));
-    })
-    .post((req, res, next) => {
-        res.statusCode = 403;
-        res.end('POST operation not supported on /books/' + req.params.bookId + '/comments/' + req.params.commentId);
-    })
-    .put((req, res, next) => {
-        Books.findById(req.params.bookId)
-            .then((book) => {
-                if (book && book.comments.id(req.params.commentId)) {
-                    if (req.body.rating) {
-                        book.comments.id(req.params.commentId).rating = req.body.rating;
-                    }
-                    if (req.body.comment) {
-                        book.comments.id(req.params.commentId).comment = req.body.comment;
-                    }
-                    book.save()
-                        .then((book) => {
-                            res.statusCode = 200;
-                            res.setHeader('Content-Type', 'application/json');
-                            res.json(book);
-                        })
-                        .catch((err) => next(err));
-                } else if (!book) {
-                    const err = new Error('Book ' + req.params.bookId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                } else {
-                    const err = new Error('Comment ' + req.params.commentId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                }
-            })
-            .catch((err) => next(err));
-    })
-    .delete((req, res, next) => {
-        Books.findById(req.params.bookId)
-            .then((book) => {
-                if (book && book.comments.id(req.params.commentId)) {
-                    book.comments.id(req.params.commentId).remove();
-                    book.save()
-                        .then((book) => {
-                            res.statusCode = 200;
-                            res.setHeader('Content-Type', 'application/json');
-                            res.json(book);
-                        })
-                        .catch((err) => next(err));
-                } else if (!book) {
-                    const err = new Error('Book ' + req.params.bookId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                } else {
-                    const err = new Error('Comment ' + req.params.commentId + ' not found');
-                    err.status = 404;
-                    return next(err);
-                }
-            })
-            .catch((err) => next(err));
-    });
+                return book.save();
+            } else if (!book) {
+                const err = new Error('Book ' + req.params.bookId + ' not found');
+                err.status = 404;
+                throw err;
+            } else {
+                const err = new Error('Comment ' + req.params.commentId + ' not found');
+                err.status = 404;
+                throw err;
+            }
+        })
+        .then((book) => {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(book);
+        })
+        .catch((err) => next(err));
+});
+
+// Endpoint DELETE /books/:bookId/comments/:commentId - Xóa một comment cụ thể của một cuốn sách
+bookRouter.delete('/:bookId/comments/:commentId', authenticate.verifyUser, authenticate.verifyfAdmin, (req, res, next) => {
+    Book.findById(req.params.bookId)
+        .then((book) => {
+            if (book && book.comments.id(req.params.commentId)) {
+                book.comments.id(req.params.commentId).remove();
+                return book.save();
+            } else if (!book) {
+                const err = new Error('Book ' + req.params.bookId + ' not found');
+                err.status = 404;
+                throw err;
+            } else {
+                const err = new Error('Comment ' + req.params.commentId + ' not found');
+                err.status = 404;
+                throw err;
+            }
+        })
+        .then((book) => {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(book);
+        })
+        .catch((err) => next(err));
+});
+// Endpoint GET /books/:bookId/populate - Lấy các comment trong một cuốn sách với điều kiện filter
+bookRouter.get('/:bookId/populate', (req, res, next) => {
+    // Lấy bookId từ request params
+    const bookId = req.params.bookId;
+
+    // Tìm sách theo bookId và populate thông tin user trong comments
+    Book.findById(bookId)
+        .populate('comments.user')
+        .then((book) => {
+            if (!book) {
+                const err = new Error(`Book ${bookId} not found`);
+                err.status = 404;
+                throw err;
+            }
+
+            // Lọc các comment chứa từ "excellent" hoặc "good"
+            const filteredComments = book.comments.filter(comment =>
+                comment.text.includes("excellent") || comment.text.includes("good")
+            );
+
+            // Trả về kết quả
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.json(filteredComments);
+        })
+        .catch((err) => next(err));
+});
+
 
 module.exports = bookRouter;

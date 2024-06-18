@@ -1,76 +1,46 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
-require('mongoose-currency').loadType(mongoose);
-const Currency = mongoose.Types.Currency;
 
-const commentSchema = new Schema({
-    rating: {
-        type: Number,
-        min: 1,
-        max: 5,
-        required: true
-    },
-    comment: {
+const bookSchema = new Schema({
+    title: {
         type: String,
         required: true
     },
     author: {
         type: String,
         required: true
-    }
-}, {
-    timestamps: true
-});
-
-const bookSchema = new Schema({
-    isbn: {
-        type: String,
-        required: true,
-        unique: true
-    },
-    title: {
-        type: String,
-        required: true
-    },
-    subTitle: {
-        type: String,
-        required: false
-    },
-    publish_date: {
-        type: Date,
-        required: true
     },
     publisher: {
         type: String,
         required: true
     },
-    pages: {
+    publication_year: {
         type: Number,
         required: true
     },
-    price: {
-        type: Currency,
-        required: true,
-        min: 0
-    },
-    description: {
-        type: String,
-        required: true
-    },
-    website: {
-        type: String,
-        required: false
-    },
-    comments: [commentSchema],
     genre: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Genre',
+        type: String,
         required: true
-    }
-}, {
-    timestamps: true
+    },
+    summary: {
+        type: String,
+        required: true
+    },
+    contents: {
+        type: String,
+        required: true
+    },
+    comments: [
+        {
+            text: String,
+            user: {
+                type: Schema.Types.ObjectId,
+                ref: 'User'
+            }
+        }
+    ]
 });
 
-const Books = mongoose.model('Book', bookSchema);
+const Book = mongoose.model('Book', bookSchema);
 
-module.exports = Books;
+module.exports = Book;
